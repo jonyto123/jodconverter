@@ -19,7 +19,13 @@
 
 package org.jodconverter.core.office;
 
-import java.io.File;
+import org.apache.commons.lang3.Validate;
+import org.checkerframework.checker.nullness.qual.NonNull;
+import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jodconverter.core.task.OfficeTask;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -27,22 +33,14 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import org.apache.commons.lang3.Validate;
-import org.checkerframework.checker.nullness.qual.NonNull;
-import org.checkerframework.checker.nullness.qual.Nullable;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import org.jodconverter.core.task.OfficeTask;
-
 /**
  * An AbstractOfficeManagerPool is responsible to maintain a pool of {@link
- * org.jodconverter.core.office.AbstractOfficeManagerPoolEntry} that will be used to execute {@link
+ * AbstractOfficeManagerPoolEntry} that will be used to execute {@link
  * org.jodconverter.core.task.OfficeTask}. The pool will use the first available {@link
- * org.jodconverter.core.office.AbstractOfficeManagerPoolEntry} to execute a given task when the
+ * AbstractOfficeManagerPoolEntry} to execute a given task when the
  * {@link #execute(org.jodconverter.core.task.OfficeTask)} function is called.
  */
-public abstract class AbstractOfficeManagerPool extends AbstractOfficeManager {
+public abstract class AbstractOfficeManagerPool implements OfficeManager {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(AbstractOfficeManagerPool.class);
 
@@ -62,19 +60,16 @@ public abstract class AbstractOfficeManagerPool extends AbstractOfficeManager {
   /**
    * Constructs a new instance of the class with the specified settings.
    *
-   * @param workingDir The directory where temporary files and directories are created.
    * @param poolSize The pool size.
    * @param taskQueueTimeout The maximum living time of a task in the conversion queue. The task
    *     will be removed from the queue if the waiting time is longer than this timeout.
    */
   protected AbstractOfficeManagerPool(
-      @NonNull final File workingDir,
-      @Nullable final Integer poolSize,
-      @Nullable final Long taskQueueTimeout) {
-    super(workingDir);
+          @Nullable final Integer poolSize,
+          @Nullable final Long taskQueueTimeout) {
 
     this.taskQueueTimeout =
-        taskQueueTimeout == null ? DEFAULT_TASK_QUEUE_TIMEOUT : taskQueueTimeout;
+            taskQueueTimeout == null ? DEFAULT_TASK_QUEUE_TIMEOUT : taskQueueTimeout;
 
     // Create the pool
     pool = new ArrayBlockingQueue<>(poolSize == null ? DEFAULT_POOL_SIZE : poolSize);
@@ -134,9 +129,6 @@ public abstract class AbstractOfficeManagerPool extends AbstractOfficeManager {
         releaseManager(manager);
       }
 
-      // Create the temporary dir if the pool has successfully started
-      makeTempDir();
-
       poolState.set(POOL_STARTED);
     }
   }
@@ -152,29 +144,25 @@ public abstract class AbstractOfficeManagerPool extends AbstractOfficeManager {
 
       poolState.set(POOL_SHUTDOWN);
 
-      try {
-        LOGGER.info("Stopping the office manager pool...");
-        pool.clear();
+      LOGGER.info("Stopping the office manager pool...");
+      pool.clear();
 
-        OfficeException firstException = null;
-        for (final OfficeManager manager : entries) {
-          try {
-            manager.stop();
-          } catch (OfficeException ex) {
-            if (firstException == null) {
-              firstException = ex;
-            }
+      OfficeException firstException = null;
+      for (final OfficeManager manager : entries) {
+        try {
+          manager.stop();
+        } catch (OfficeException ex) {
+          if (firstException == null) {
+            firstException = ex;
           }
         }
-
-        if (firstException != null) {
-          throw firstException;
-        }
-
-        LOGGER.info("Office manager stopped");
-      } finally {
-        deleteTempDir();
       }
+
+      if (firstException != null) {
+        throw firstException;
+      }
+
+      LOGGER.info("Office manager stopped");
     }
   }
 
@@ -190,13 +178,13 @@ public abstract class AbstractOfficeManagerPool extends AbstractOfficeManager {
       final OfficeManager manager = pool.poll(taskQueueTimeout, TimeUnit.MILLISECONDS);
       if (manager == null) {
         throw new OfficeException(
-            "No office manager available after " + taskQueueTimeout + " millisec.");
+                "No office manager available after " + taskQueueTimeout + " millisec.");
       }
       return manager;
     } catch (InterruptedException interruptedEx) {
       throw new OfficeException(
-          "Thread has been interrupted while waiting for a manager to become available.",
-          interruptedEx);
+              "Thread has been interrupted while waiting for a manager to become available.",
+              interruptedEx);
     }
   }
 
@@ -223,8 +211,9 @@ public abstract class AbstractOfficeManagerPool extends AbstractOfficeManager {
    */
   @SuppressWarnings("unchecked")
   public abstract static class AbstractOfficeManagerPoolBuilder<
-          B extends AbstractOfficeManagerPoolBuilder<B>>
-      extends AbstractOfficeManagerBuilder<B> {
+          B extends AbstractOfficeManagerPoolBuilder<B>> {
+
+    protected boolean install;
 
     protected Long taskExecutionTimeout;
     protected Long taskQueueTimeout;
@@ -248,11 +237,11 @@ public abstract class AbstractOfficeManagerPool extends AbstractOfficeManager {
 
       if (taskExecutionTimeout != null) {
         Validate.inclusiveBetween(
-            0,
-            Long.MAX_VALUE,
-            taskExecutionTimeout,
-            String.format(
-                "taskExecutionTimeout %s must greater than or equal to 0", taskExecutionTimeout));
+                0,
+                Long.MAX_VALUE,
+                taskExecutionTimeout,
+                String.format(
+                        "taskExecutionTimeout %s must greater than or equal to 0", taskExecutionTimeout));
       }
       this.taskExecutionTimeout = taskExecutionTimeout;
       return (B) this;
@@ -272,12 +261,18 @@ public abstract class AbstractOfficeManagerPool extends AbstractOfficeManager {
 
       if (taskQueueTimeout != null) {
         Validate.inclusiveBetween(
-            0,
-            Long.MAX_VALUE,
-            taskQueueTimeout,
-            String.format("taskQueueTimeout %s must greater than or equal to 0", taskQueueTimeout));
+                0,
+                Long.MAX_VALUE,
+                taskQueueTimeout,
+                String.format("taskQueueTimeout %s must greater than or equal to 0", taskQueueTimeout));
       }
       this.taskQueueTimeout = taskQueueTimeout;
+      return (B) this;
+    }
+
+    @NonNull
+    public B install() {
+      this.install = true;
       return (B) this;
     }
   }

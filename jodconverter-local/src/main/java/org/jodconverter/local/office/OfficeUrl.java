@@ -84,6 +84,23 @@ class OfficeUrl {
   }
 
   /**
+   * Creates an UnoUrl for the specified host and port.
+   *
+   * @param host The host.
+   * @param port The port.
+   * @return The created UnoUrl.
+   */
+  static UnoUrl socket(final String host, final int port) {
+
+    try {
+      return UnoUrl.parseUnoUrl(
+              "socket,host=" + host + ",port=" + port + ",tcpNoDelay=1;urp;StarOffice.ServiceManager");
+    } catch (Exception ex) {
+      throw new IllegalArgumentException(ex);
+    }
+  }
+
+  /**
    * Creates an OfficeUrl for the specified pipe.
    *
    * @param pipeName The pipe name.
@@ -101,6 +118,17 @@ class OfficeUrl {
   public OfficeUrl(final int port) {
 
     this.unoUrl = socket(port);
+  }
+
+  /**
+   * Creates an OfficeUrl for the specified host and port.
+   *
+   * @param host The host.
+   * @param port The port.
+   */
+  public OfficeUrl(final String host, final int port) {
+
+    this.unoUrl = socket(host, port);
   }
 
   /**
